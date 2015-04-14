@@ -1,0 +1,19 @@
+%%%-------------------------------------------------------------------
+%%% @author myang
+%%% @copyright (C) 2015, <COMPANY>
+%%% @doc
+%%%
+%%% @end
+%%% Created : 14. Apr 2015 9:59 PM
+%%%-------------------------------------------------------------------
+{application, simple_rpc, [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+    kernel,
+    stdlib
+  ]},
+  {mod, {simple_rpc, []}},
+  {env, []}
+]}.
