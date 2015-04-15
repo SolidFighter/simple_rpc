@@ -181,7 +181,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% @end
 %%--------------------------------------------------------------------
 -spec do_rpc(Socket, RawData) -> ok | {error, Reason} when
-  Socket :: socket(),
+  Socket :: term(),
   RawData :: term(),
   Reason :: closed | inet:posix().
 do_rpc(Socket, RawData) ->
