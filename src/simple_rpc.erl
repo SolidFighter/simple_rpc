@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/0, start_link/1, stop/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -23,8 +23,9 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
+-define(DEFAULT_PORT, 2100).
 
--record(state, {}).
+-record(state, {port, lsock}).
 
 %%%===================================================================
 %%% API
@@ -36,10 +37,31 @@
 %%
 %% @end
 %%--------------------------------------------------------------------
+-spec(start_link(Port :: integer()) ->
+  {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
+start_link(Port) ->
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [Port], []).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Starts the server using the default port
+%%
+%% @end
+%%--------------------------------------------------------------------
 -spec(start_link() ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link() ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+%%--------------------------------------------------------------------
+%% @doc
+%% Stop the server
+%%
+%% @end
+%%--------------------------------------------------------------------
+-spec(stop() -> ok).
+stop() ->
+  gen_server:cast(?SERVER, stop).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -59,8 +81,9 @@ start_link() ->
 -spec(init(Args :: term()) ->
   {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
-init([]) ->
-  {ok, #state{}}.
+init([Port]) ->
+  {ok, LSock} = gen_tcp:listen(Port, [{active, true}]),
+  {ok, #state{port = Port, lsock = LSock}, 0}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -91,8 +114,8 @@ handle_call(_Request, _From, State) ->
   {noreply, NewState :: #state{}} |
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
-handle_cast(_Request, State) ->
-  {noreply, State}.
+handle_cast(stop, State) ->
+  {noreply, normal, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -108,7 +131,11 @@ handle_cast(_Request, State) ->
   {noreply, NewState :: #state{}} |
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
-handle_info(_Info, State) ->
+handle_info({tcp, Socket, RawData}, State) ->
+  do_rpc(Socket, RawData),
+  {noreply, State};
+handle_info(timeout, #state{lsock = LSock} = State) ->
+  {ok, _Sock} = gen_tcp:accept(LSock),
   {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -144,3 +171,59 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Do rpc
+%%
+%% @spec do_rpc(Socket, RawData) -> ok | {error, Reason}
+%% @end
+%%--------------------------------------------------------------------
+-spec do_rpc(Socket, RawData) -> ok | {error, Reason} when
+  Socket :: socket(),
+  RawData :: term(),
+  Reason :: closed | inet:posix().
+do_rpc(Socket, RawData) ->
+  try
+    {Mod, Func, Args} = split_out_mfa(RawData),
+    Result = apply(Mod, Func, Args),
+    gen_tcp:send(Socket, io_lib:fwrite("~p~n", [Result]))
+  catch
+    _Class:Err ->
+      gen_tcp:send(Socket, io_lib:fwrite("~p~n", [Err]))
+  end.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Split out module, function and arguments from RawData
+%%
+%% @spec split_out_mfa(RawData) -> tuple()
+%% @end
+%%--------------------------------------------------------------------
+-spec split_out_mfa(RawData) -> tuple() when
+  RawData :: term().
+split_out_mfa(RawData) ->
+  MFA = re:replace(RawData, "\r\n$", "", [{return, list}]),
+  {match, [M, F, A]} =
+    re:run(MFA,
+      "(.*):(.*)\s*\\((.*)\s*\\)\s*.\s*$",
+      [{capture, [1,2,3], list}, ungreedy]),
+  {list_to_atom(M), list_to_atom(F), args_to_terms(A)}.
+
+%%--------------------------------------------------------------------
+%% @private
+%% @doc
+%% Convert arguments to erlang term
+%%
+%% @spec args_to_terms(RawArgs) -> term()
+%% @end
+%%--------------------------------------------------------------------
+-spec args_to_terms(RawArgs) -> term() when
+  RawArgs :: term().
+args_to_terms(RawArgs) ->
+  {ok, Toks, _Line} = erl_scan:string("[" ++ RawArgs ++ "]. ", 1),
+  {ok, Args} = erl_parse:parse_term(Toks),
+  Args.
+
