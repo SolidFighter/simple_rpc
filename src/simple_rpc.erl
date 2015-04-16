@@ -8,6 +8,7 @@
 %%%-------------------------------------------------------------------
 -module(simple_rpc).
 -author("myang").
+-include_lib("eunit/include/eunit.hrl").
 
 -behaviour(gen_server).
 
@@ -42,6 +43,9 @@
 start_link(Port) ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [Port], []).
 
+start_link_test() ->
+  {ok, _Pid} = start_link(2055).
+
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server using the default port
@@ -51,7 +55,7 @@ start_link(Port) ->
 -spec(start_link() ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link() ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+  start_link(?DEFAULT_PORT).
 
 %%--------------------------------------------------------------------
 %% @doc
