@@ -1,0 +1,4 @@
+%% encoding: UTF-8
+{application,simple_rpc}.
+{packages,[]}.
+{modules,[simple_rpc,simple_rpc_app,simple_rpc_sup]}.
